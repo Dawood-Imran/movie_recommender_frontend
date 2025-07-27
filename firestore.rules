@@ -1,0 +1,63 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isValidUserData(data) {
+      return data.keys().hasAll(['name', 'email', 'userId', 'createdAt']) &&
+             data.name is string &&
+             data.name.size() > 0 &&
+             data.email is string &&
+             data.email.matches('^[^@]+@[^@]+\\.[^@]+$') &&
+             data.userId is string &&
+             data.createdAt is string;
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      // Allow read if user is authenticated and is the owner of the document
+      allow read: if isAuthenticated() && isOwner(resource.data.userId);
+      
+      // Allow create if:
+      // 1. User is authenticated
+      // 2. The userId in the document matches the authenticated user's ID
+      // 3. The data follows the required structure
+      allow create: if isAuthenticated() &&
+                     isOwner(request.resource.data.userId) &&
+                     isValidUserData(request.resource.data);
+      
+      // Allow update if:
+      // 1. User is authenticated
+      // 2. Is updating their own document
+      // 3. Not trying to change userId or email
+      // 4. Other fields maintain valid format
+      allow update: if isAuthenticated() &&
+                     isOwner(resource.data.userId) &&
+                     request.resource.data.userId == resource.data.userId &&
+                     request.resource.data.email == resource.data.email &&
+                     isValidUserData(request.resource.data);
+      
+      // Allow delete if user is authenticated and is the owner
+      allow delete: if isAuthenticated() && isOwner(resource.data.userId);
+    }
+
+    // Future collections can be added here with their own rules
+    match /userPreferences/{docId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow write: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
+    }
+
+    // Deny all other access by default
+    match /{document=**} {
+      allow read, write: false;
+    }
+  }
+}
