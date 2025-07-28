@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import Signin from "./Components/Signin"
 import Signup from "./Components/Signup"
 import MovieSearch from "./App/MovieSearch"
+import MovieScreen from "./App/MovieScreen"
 import SplashScreen from "./Components/SplashScreen"
 import { auth } from "./firebaseconfig"
 import { onAuthStateChanged } from "firebase/auth"
@@ -17,6 +18,8 @@ function App() {
   const [splashMessage, setSplashMessage] = useState("Loading your movie experience...")
   const [isSignupFlow, setIsSignupFlow] = useState(false)
   const [isSignoutFlow, setIsSignoutFlow] = useState(false)
+  const [currentScreen, setCurrentScreen] = useState("search") // "search" or "movie"
+  const [selectedMovie, setSelectedMovie] = useState(null)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -60,6 +63,8 @@ function App() {
             setShowSplash(false)
             setIsSignIn(true)
             setIsSignoutFlow(false)
+            setCurrentScreen("search")
+            setSelectedMovie(null)
             setLoading(false)
           }, 2500)
           return
@@ -100,14 +105,27 @@ function App() {
     setLoading(true)
   }
 
+  const handleMovieSelect = (movie) => {
+    setSelectedMovie(movie)
+    setCurrentScreen("movie")
+  }
+
+  const handleBackToSearch = () => {
+    setCurrentScreen("search")
+    setSelectedMovie(null)
+  }
+
   // Show splash screen during loading or specific flows
   if (loading || showSplash) {
     return <SplashScreen message={splashMessage} />
   }
 
-  // Show MovieSearch only if user exists and we're not in any special flow
+  // Show MovieSearch or MovieScreen only if user exists and we're not in any special flow
   if (user && !isSignupFlow && !isSignoutFlow) {
-    return <MovieSearch onSignOut={handleSignOut} />
+    if (currentScreen === "movie" && selectedMovie) {
+      return <MovieScreen movie={selectedMovie} onBack={handleBackToSearch} />
+    }
+    return <MovieSearch onSignOut={handleSignOut} onMovieSelect={handleMovieSelect} />
   }
 
   // Show authentication forms
