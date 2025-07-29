@@ -7,6 +7,104 @@ import toast from "react-hot-toast"
 import Toast from "../Components/Toast"
 import { Search, LogOut, Loader2, User, Star, Calendar, ChevronLeft, ChevronRight } from "lucide-react"
 
+// Enhanced tracking function with debugging (same as MovieScreen)
+async function sendTrackEvent({ user_id, event_type, event_data }) {
+  console.log("🚀 [SEARCH] sendTrackEvent CALLED with:", { user_id, event_type, event_data })
+
+  if (!user_id) {
+    console.error("❌ [SEARCH] TRACKING FAILED: No user_id provided")
+    return false
+  }
+
+  if (!event_type) {
+    console.error("❌ [SEARCH] TRACKING FAILED: No event_type provided")
+    return false
+  }
+
+  if (!event_data) {
+    console.error("❌ [SEARCH] TRACKING FAILED: No event_data provided")
+    return false
+  }
+
+  const payload = {
+    user_id,
+    event_type,
+    event_data,
+    timestamp: new Date().toISOString(),
+  }
+
+  console.log("📦 [SEARCH] Payload prepared:", JSON.stringify(payload, null, 2))
+
+  try {
+    console.log("⏳ [SEARCH] Starting fetch request...")
+
+    const response = await fetch("http://localhost:8000/track", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    console.log("📡 [SEARCH] Response received:", {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("❌ [SEARCH] HTTP Error Response:", errorText)
+      throw new Error(`HTTP ${response.status}: ${errorText}`)
+    }
+
+    const responseData = await response.json()
+    console.log("✅ [SEARCH] SUCCESS Response data:", responseData)
+
+    toast.success(`[SEARCH] Tracked: ${event_type}`, {
+      duration: 2000,
+      style: { background: "#10B981", color: "white" },
+    })
+
+    return true
+  } catch (error) {
+    console.error("💥 [SEARCH] FETCH ERROR:", error)
+    toast.error(`[SEARCH] Tracking failed: ${error.message}`, {
+      duration: 4000,
+      style: { background: "#EF4444", color: "white" },
+    })
+    return false
+  }
+}
+
+// Enhanced user ID detection
+function getUserId() {
+  console.log("🔍 [SEARCH] Getting user ID...")
+
+  if (window?.firebase?.auth?.currentUser?.uid) {
+    const uid = window.firebase.auth.currentUser.uid
+    console.log("✅ [SEARCH] User ID from firebase.auth.currentUser:", uid)
+    return uid
+  }
+
+  if (window?.auth?.currentUser?.uid) {
+    const uid = window.auth.currentUser.uid
+    console.log("✅ [SEARCH] User ID from auth.currentUser:", uid)
+    return uid
+  }
+
+  const storedUserId = localStorage.getItem("userId")
+  if (storedUserId) {
+    console.log("✅ [SEARCH] User ID from localStorage:", storedUserId)
+    return storedUserId
+  }
+
+  const tempId = `temp_search_${Date.now()}`
+  console.log("⚠️ [SEARCH] No user ID found, using temporary ID:", tempId)
+  return tempId
+}
+
 export default function MovieSearch({ onSignOut, onMovieSelect }) {
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(false)
@@ -14,16 +112,34 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
   const [movies, setMovies] = useState([])
   const [isLoadingTrending, setIsLoadingTrending] = useState(true)
   const [filteredMovies, setFilteredMovies] = useState([])
+  const [userId, setUserId] = useState(null)
+  const [debugInfo, setDebugInfo] = useState([])
   const carouselRef = useRef(null)
   const user = auth.currentUser
+
+  // Enhanced user ID detection on mount
+  useEffect(() => {
+    console.log("🔍 [SEARCH] MovieSearch component mounted")
+    const detectedUserId = getUserId()
+    setUserId(detectedUserId)
+    addDebugInfo(`User ID detected: ${detectedUserId}`)
+  }, [])
 
   // Load trending movies on component mount
   useEffect(() => {
     fetchTrendingMovies()
   }, [])
 
+  const addDebugInfo = (message) => {
+    const timestamp = new Date().toLocaleTimeString()
+    setDebugInfo((prev) => [...prev.slice(-9), `${timestamp}: ${message}`])
+  }
+
   const fetchTrendingMovies = async () => {
+    console.log("📽️ [SEARCH] Fetching trending movies...")
     setIsLoadingTrending(true)
+    addDebugInfo("Fetching trending movies...")
+
     try {
       const response = await fetch("http://localhost:8000/trending-movies")
       if (!response.ok) {
@@ -33,17 +149,11 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
       setMovies(data)
       setFilteredMovies(data)
 
-      toast.success("Trending movies loaded!", {
-        duration: 2000,
-        icon: "🎬",
-        style: {
-          borderRadius: "10px",
-          background: "#22c55e",
-          color: "#fff",
-        },
-      })
+      
     } catch (error) {
-      console.error("Error fetching trending movies:", error)
+      console.error("💥 [SEARCH] Error fetching trending movies:", error)
+      addDebugInfo(`Error loading movies: ${error.message}`)
+
       toast.error("Failed to load trending movies. Please check your connection.", {
         duration: 4000,
         icon: "❌",
@@ -60,6 +170,9 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
 
   const handleSearch = async (e) => {
     e.preventDefault()
+    console.log("🔍 [SEARCH] Search initiated with query:", searchQuery)
+    addDebugInfo(`Search initiated: "${searchQuery}"`)
+
     if (!searchQuery.trim()) {
       toast.error("Please enter a search term", {
         style: {
@@ -89,6 +202,26 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
       )
 
       setFilteredMovies(searchResults)
+      console.log("✅ [SEARCH] Search completed:", searchResults.length, "results")
+      addDebugInfo(`Search completed: ${searchResults.length} results`)
+
+      // Track search event
+      if (userId) {
+        console.log("📊 [SEARCH] Tracking search event...")
+        const success = await sendTrackEvent({
+          user_id: userId,
+          event_type: "search",
+          event_data: {
+            query: searchQuery,
+            results_count: searchResults.length,
+            timestamp: new Date().toISOString(),
+          },
+        })
+        addDebugInfo(`Search tracking ${success ? "SUCCESS" : "FAILED"}`)
+      } else {
+        console.log("⚠️ [SEARCH] No userId for search tracking")
+        addDebugInfo("Search tracking skipped - no userId")
+      }
 
       toast.success(`Found ${searchResults.length} results for "${searchQuery}"`, {
         id: toastId,
@@ -101,6 +234,9 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
         },
       })
     } catch (error) {
+      console.error("💥 [SEARCH] Search error:", error)
+      addDebugInfo(`Search error: ${error.message}`)
+
       toast.error("Failed to search movies. Please try again.", {
         id: toastId,
         duration: 4000,
@@ -111,13 +247,14 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
           color: "#fff",
         },
       })
-      console.error("Search error:", error)
     } finally {
       setIsLoading(false)
     }
   }
 
   const handleSignOut = async () => {
+    console.log("👋 [SEARCH] Sign out initiated")
+    addDebugInfo("Sign out initiated")
     setIsSigningOut(true)
 
     try {
@@ -137,6 +274,9 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
         await signOut(auth)
       }, 500)
     } catch (error) {
+      console.error("💥 [SEARCH] Sign out error:", error)
+      addDebugInfo(`Sign out error: ${error.message}`)
+
       toast.error("Failed to sign out. Please try again.", {
         duration: 4000,
         icon: "❌",
@@ -146,7 +286,6 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
           color: "#fff",
         },
       })
-      console.error("Sign out error:", error)
       setIsSigningOut(false)
     }
   }
@@ -156,18 +295,44 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
     return `https://image.tmdb.org/t/p/w500${path}`
   }
 
-  const handleMovieClick = (movie) => {
+  const handleMovieClick = async (movie) => {
+    console.log("🎬 [SEARCH] Movie clicked:", movie.title, "ID:", movie.id)
+    addDebugInfo(`Movie clicked: ${movie.title}`)
+
+    // Track movie click from search
+    if (userId) {
+      console.log("📊 [SEARCH] Tracking movie click from search...")
+      const success = await sendTrackEvent({
+        user_id: userId,
+        event_type: "click",
+        event_data: {
+          movie_id: movie.id,
+          movie_title: movie.title,
+          source: "search",
+          search_query: searchQuery || null,
+          timestamp: new Date().toISOString(),
+        },
+      })
+      addDebugInfo(`Movie click tracking ${success ? "SUCCESS" : "FAILED"}`)
+    } else {
+      console.log("⚠️ [SEARCH] No userId for movie click tracking")
+      addDebugInfo("Movie click tracking skipped - no userId")
+    }
+
     onMovieSelect(movie)
   }
 
   const clearSearch = () => {
+    console.log("🧹 [SEARCH] Clearing search")
+    addDebugInfo("Search cleared")
     setSearchQuery("")
     setFilteredMovies(movies)
   }
 
   const scrollCarousel = (direction) => {
+    console.log("🎠 [SEARCH] Carousel scroll:", direction)
     if (carouselRef.current) {
-      const scrollAmount = 320 // Width of one movie card + gap
+      const scrollAmount = 320
       const currentScroll = carouselRef.current.scrollLeft
       const newScroll = direction === "left" ? currentScroll - scrollAmount * 3 : currentScroll + scrollAmount * 3
 
@@ -178,9 +343,29 @@ export default function MovieSearch({ onSignOut, onMovieSelect }) {
     }
   }
 
+  // Test tracking function
+  const testTracking = async () => {
+    console.log("🧪 [SEARCH] Testing tracking manually...")
+    addDebugInfo("Manual tracking test started")
+
+    const success = await sendTrackEvent({
+      user_id: userId || "test_search_user",
+      event_type: "test",
+      event_data: {
+        source: "search_page",
+        test: true,
+        timestamp: new Date().toISOString(),
+      },
+    })
+
+    addDebugInfo(`Manual test ${success ? "SUCCESS" : "FAILED"}`)
+  }
+
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <Toast />
+
+      
 
       {/* Header with user info */}
       <div className="bg-gradient-to-r from-red-900 to-gray-900 p-4 shadow-lg">

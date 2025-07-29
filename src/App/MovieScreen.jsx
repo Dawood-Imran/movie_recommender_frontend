@@ -1,18 +1,182 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import toast from "react-hot-toast"
 import Toast from "../Components/Toast"
-import { ArrowLeft, Star, Calendar, Clock, Play, Heart, Share2, Bookmark } from "lucide-react"
+import { ArrowLeft, Star, Calendar, Clock, Heart, Bookmark } from "lucide-react"
 import { useFavorites } from "../hooks/useFavorites"
 import { useWatchlist } from "../hooks/useWatchlist"
 import { useRating } from "../hooks/useRating"
 import RatingStars from "../Components/RatingStars"
 
+// Enhanced tracking function with extensive debugging
+async function sendTrackEvent({ user_id, event_type, event_data }) {
+  console.log("🚀 sendTrackEvent CALLED with:", { user_id, event_type, event_data })
+
+  // Validate inputs with detailed logging
+  if (!user_id) {
+    console.error("❌ TRACKING FAILED: No user_id provided")
+    console.log("Available window objects:", {
+      firebase: !!window?.firebase,
+      auth: !!window?.auth,
+      firebaseAuth: !!window?.firebase?.auth,
+      currentUser: !!window?.firebase?.auth?.currentUser,
+    })
+    return false
+  }
+
+  if (!event_type) {
+    console.error("❌ TRACKING FAILED: No event_type provided")
+    return false
+  }
+
+  if (!event_data) {
+    console.error("❌ TRACKING FAILED: No event_data provided")
+    return false
+  }
+
+  const payload = {
+    user_id,
+    event_type,
+    event_data,
+    timestamp: new Date().toISOString(),
+  }
+
+  console.log("📦 Payload prepared:", JSON.stringify(payload, null, 2))
+  console.log("🌐 Making request to: http://localhost:8000/track")
+
+  try {
+    console.log("⏳ Starting fetch request...")
+
+    const response = await fetch("http://localhost:8000/track", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+    })
+
+    console.log("📡 Response received:", {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      headers: Object.fromEntries(response.headers.entries()),
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("❌ HTTP Error Response:", errorText)
+      throw new Error(`HTTP ${response.status}: ${errorText}`)
+    }
+
+    const responseData = await response.json()
+    console.log("✅ SUCCESS Response data:", responseData)
+
+    // Show success toast for debugging
+    toast.success(`Tracked: ${event_type}`, {
+      duration: 2000,
+      style: { background: "#10B981", color: "white" },
+    })
+
+    return true
+  } catch (error) {
+    console.error("💥 FETCH ERROR:", error)
+    console.error("Error name:", error.name)
+    console.error("Error message:", error.message)
+    console.error("Error stack:", error.stack)
+
+    // Show error toast for debugging
+    toast.error(`Tracking failed: ${error.message}`, {
+      duration: 4000,
+      style: { background: "#EF4444", color: "white" },
+    })
+
+    return false
+  }
+}
+
+// Enhanced user ID detection with debugging
+function getUserId() {
+  console.log("🔍 Getting user ID...")
+
+  // Method 1: Firebase auth current user
+  if (window?.firebase?.auth?.currentUser?.uid) {
+    const uid = window.firebase.auth.currentUser.uid
+    console.log("✅ User ID from firebase.auth.currentUser:", uid)
+    return uid
+  }
+
+  // Method 2: Direct auth object
+  if (window?.auth?.currentUser?.uid) {
+    const uid = window.auth.currentUser.uid
+    console.log("✅ User ID from auth.currentUser:", uid)
+    return uid
+  }
+
+  // Method 3: Try to get from localStorage (if you store it there)
+  const storedUserId = localStorage.getItem("userId")
+  if (storedUserId) {
+    console.log("✅ User ID from localStorage:", storedUserId)
+    return storedUserId
+  }
+
+  // Method 4: Generate a temporary ID for testing
+  const tempId = `temp_${Date.now()}`
+  console.log("⚠️ No user ID found, using temporary ID:", tempId)
+  return tempId
+}
+
 export default function MovieScreen({ movie, onBack }) {
   const { isFavorite, isLoading: isFavoriteLoading, toggleFavorite } = useFavorites(movie.id)
   const { isInWatchlist, isLoading: isWatchlistLoading, toggleWatchlist } = useWatchlist(movie.id)
   const { userRating, isLoading: isRatingLoading, setRating } = useRating(movie.id)
+
+  const [userId, setUserId] = useState(null)
+  const [debugInfo, setDebugInfo] = useState([])
+
+  // Enhanced user ID detection on mount
+  useEffect(() => {
+    console.log("🎬 MovieScreen mounted for movie:", movie?.title, "ID:", movie?.id)
+
+    const detectedUserId = getUserId()
+    setUserId(detectedUserId)
+
+    addDebugInfo(`User ID detected: ${detectedUserId}`)
+    addDebugInfo(`Movie loaded: ${movie?.title} (${movie?.id})`)
+  }, [movie])
+
+  // Track movie click with enhanced debugging
+  useEffect(() => {
+    console.log("👀 Movie view tracking effect triggered")
+    console.log("Current userId:", userId)
+    console.log("Current movie.id:", movie?.id)
+
+    if (userId && movie?.id) {
+      console.log("🎯 Conditions met, tracking movie view...")
+      addDebugInfo(`Tracking movie view: ${movie.title}`)
+
+      sendTrackEvent({
+        user_id: userId,
+        event_type: "click",
+        event_data: {
+          movie_id: movie.id,
+          movie_title: movie.title,
+          timestamp: new Date().toISOString(),
+        },
+      }).then((success) => {
+        addDebugInfo(`Movie view tracking ${success ? "SUCCESS" : "FAILED"}`)
+      })
+    } else {
+      console.log("⏸️ Skipping movie view tracking - missing userId or movie.id")
+      addDebugInfo(`Skipped view tracking - userId: ${!!userId}, movieId: ${!!movie?.id}`)
+    }
+  }, [movie.id, userId])
+
+  const addDebugInfo = (message) => {
+    const timestamp = new Date().toLocaleTimeString()
+    setDebugInfo((prev) => [...prev.slice(-9), `${timestamp}: ${message}`])
+  }
 
   const getImageUrl = (path) => {
     if (!path) return "/placeholder.svg?height=600&width=400&text=No+Image"
@@ -25,14 +189,112 @@ export default function MovieScreen({ movie, onBack }) {
   }
 
   const handleFavorite = async () => {
-    await toggleFavorite(movie)
+    console.log("❤️ Favorite button clicked")
+    console.log("Current isFavorite state:", isFavorite)
+    console.log("Current userId:", userId)
+
+    addDebugInfo(`Favorite clicked - current state: ${isFavorite}`)
+
+    try {
+      await toggleFavorite(movie)
+      console.log("✅ toggleFavorite completed")
+
+      if (userId) {
+        console.log("📊 Tracking favorite event...")
+        const success = await sendTrackEvent({
+          user_id: userId,
+          event_type: "favorite",
+          event_data: {
+            movie_id: movie.id,
+            movie_title: movie.title,
+            action: isFavorite ? "remove" : "add",
+            timestamp: new Date().toISOString(),
+          },
+        })
+        addDebugInfo(`Favorite tracking ${success ? "SUCCESS" : "FAILED"}`)
+      } else {
+        console.log("⚠️ No userId for favorite tracking")
+        addDebugInfo("Favorite tracking skipped - no userId")
+      }
+    } catch (error) {
+      console.error("💥 Error in handleFavorite:", error)
+      addDebugInfo(`Favorite error: ${error.message}`)
+    }
   }
 
   const handleBookmark = async () => {
-    await toggleWatchlist(movie)
+    console.log("🔖 Bookmark button clicked")
+    console.log("Current isInWatchlist state:", isInWatchlist)
+    console.log("Current userId:", userId)
+
+    addDebugInfo(`Watchlist clicked - current state: ${isInWatchlist}`)
+
+    try {
+      await toggleWatchlist(movie)
+      console.log("✅ toggleWatchlist completed")
+
+      if (userId) {
+        console.log("📊 Tracking watchlist event...")
+        const success = await sendTrackEvent({
+          user_id: userId,
+          event_type: "watchlist",
+          event_data: {
+            movie_id: movie.id,
+            movie_title: movie.title,
+            action: isInWatchlist ? "remove" : "add",
+            timestamp: new Date().toISOString(),
+          },
+        })
+        addDebugInfo(`Watchlist tracking ${success ? "SUCCESS" : "FAILED"}`)
+      } else {
+        console.log("⚠️ No userId for watchlist tracking")
+        addDebugInfo("Watchlist tracking skipped - no userId")
+      }
+    } catch (error) {
+      console.error("💥 Error in handleBookmark:", error)
+      addDebugInfo(`Watchlist error: ${error.message}`)
+    }
+  }
+
+  const handleRating = async (rating) => {
+    console.log("⭐ Rating changed to:", rating)
+    console.log("Previous rating:", userRating)
+    console.log("Current userId:", userId)
+
+    addDebugInfo(`Rating changed to: ${rating} (was: ${userRating})`)
+
+    try {
+      await setRating(rating)
+      console.log("✅ setRating completed")
+
+      if (userId) {
+        console.log("📊 Tracking rating event...")
+        const success = await sendTrackEvent({
+          user_id: userId,
+          event_type: "rate",
+          event_data: {
+            movie_id: movie.id,
+            movie_title: movie.title,
+            rating: rating,
+            previous_rating: userRating,
+            timestamp: new Date().toISOString(),
+          },
+        })
+        addDebugInfo(`Rating tracking ${success ? "SUCCESS" : "FAILED"}`)
+      } else {
+        console.log("⚠️ No userId for rating tracking")
+        addDebugInfo("Rating tracking skipped - no userId")
+      }
+    } catch (error) {
+      console.error("💥 Error in handleRating:", error)
+      addDebugInfo(`Rating error: ${error.message}`)
+    }
   }
 
   const handleShare = () => {
+    console.log("📤 Share button clicked")
+    addDebugInfo("Share clicked")
+
     if (navigator.share) {
       navigator.share({
         title: movie.title,
@@ -53,22 +315,29 @@ export default function MovieScreen({ movie, onBack }) {
     }
   }
 
-  const handleWatchTrailer = () => {
-    toast.success("Opening trailer...", {
-      duration: 2000,
-      icon: "🎬",
-      style: {
-        borderRadius: "10px",
-        background: "#22c55e",
-        color: "#fff",
+  // Test tracking function
+  const testTracking = async () => {
+    console.log("🧪 Testing tracking manually...")
+    addDebugInfo("Manual tracking test started")
+
+    const success = await sendTrackEvent({
+      user_id: userId || "test_user",
+      event_type: "test",
+      event_data: {
+        movie_id: movie.id,
+        test: true,
+        timestamp: new Date().toISOString(),
       },
     })
-    // Here you would typically open a trailer modal or redirect to trailer
+
+    addDebugInfo(`Manual test ${success ? "SUCCESS" : "FAILED"}`)
   }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <Toast />
+
+      
 
       {/* Backdrop Header */}
       <div className="relative h-96 overflow-hidden">
@@ -93,7 +362,6 @@ export default function MovieScreen({ movie, onBack }) {
 
         {/* Action Buttons */}
         <div className="absolute top-4 right-4 flex space-x-2">
-       
           <button
             onClick={handleFavorite}
             className={`p-2 bg-black bg-opacity-70 rounded-lg hover:bg-opacity-90 transition-all ${
@@ -147,11 +415,7 @@ export default function MovieScreen({ movie, onBack }) {
 
               <div className="flex flex-col items-start gap-1">
                 <span className="text-sm text-gray-400">Your Rating</span>
-                <RatingStars
-                  rating={userRating}
-                  onRate={setRating}
-                  isLoading={isRatingLoading}
-                />
+                <RatingStars rating={userRating} onRate={handleRating} isLoading={isRatingLoading} />
               </div>
 
               <div className="flex items-center">
@@ -167,8 +431,6 @@ export default function MovieScreen({ movie, onBack }) {
 
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-4 mb-8">
-              
-
               <button
                 onClick={handleFavorite}
                 disabled={isFavoriteLoading}
@@ -179,11 +441,7 @@ export default function MovieScreen({ movie, onBack }) {
                 } ${isFavoriteLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <Heart className={`mr-2 h-5 w-5 ${isFavorite ? "fill-current" : ""}`} />
-                {isFavoriteLoading 
-                  ? "Loading..." 
-                  : isFavorite 
-                    ? "Favorited" 
-                    : "Add to Favorites"}
+                {isFavoriteLoading ? "Loading..." : isFavorite ? "Favorited" : "Add to Favorites"}
               </button>
 
               <button
@@ -196,11 +454,7 @@ export default function MovieScreen({ movie, onBack }) {
                 } ${isWatchlistLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <Bookmark className={`mr-2 h-5 w-5 ${isInWatchlist ? "fill-current" : ""}`} />
-                {isWatchlistLoading 
-                  ? "Loading..." 
-                  : isInWatchlist 
-                    ? "In Watchlist" 
-                    : "Add to Watchlist"}
+                {isWatchlistLoading ? "Loading..." : isInWatchlist ? "In Watchlist" : "Add to Watchlist"}
               </button>
             </div>
 
