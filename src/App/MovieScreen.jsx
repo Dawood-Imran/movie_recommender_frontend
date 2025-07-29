@@ -4,10 +4,15 @@ import { useState } from "react"
 import toast from "react-hot-toast"
 import Toast from "../Components/Toast"
 import { ArrowLeft, Star, Calendar, Clock, Play, Heart, Share2, Bookmark } from "lucide-react"
+import { useFavorites } from "../hooks/useFavorites"
+import { useWatchlist } from "../hooks/useWatchlist"
+import { useRating } from "../hooks/useRating"
+import RatingStars from "../Components/RatingStars"
 
 export default function MovieScreen({ movie, onBack }) {
-  const [isFavorite, setIsFavorite] = useState(false)
-  const [isBookmarked, setIsBookmarked] = useState(false)
+  const { isFavorite, isLoading: isFavoriteLoading, toggleFavorite } = useFavorites(movie.id)
+  const { isInWatchlist, isLoading: isWatchlistLoading, toggleWatchlist } = useWatchlist(movie.id)
+  const { userRating, isLoading: isRatingLoading, setRating } = useRating(movie.id)
 
   const getImageUrl = (path) => {
     if (!path) return "/placeholder.svg?height=600&width=400&text=No+Image"
@@ -19,30 +24,12 @@ export default function MovieScreen({ movie, onBack }) {
     return `https://image.tmdb.org/t/p/w1280${path}`
   }
 
-  const handleFavorite = () => {
-    setIsFavorite(!isFavorite)
-    toast.success(isFavorite ? "Removed from favorites" : "Added to favorites", {
-      duration: 2000,
-      icon: isFavorite ? "💔" : "❤️",
-      style: {
-        borderRadius: "10px",
-        background: "#22c55e",
-        color: "#fff",
-      },
-    })
+  const handleFavorite = async () => {
+    await toggleFavorite(movie)
   }
 
-  const handleBookmark = () => {
-    setIsBookmarked(!isBookmarked)
-    toast.success(isBookmarked ? "Removed from watchlist" : "Added to watchlist", {
-      duration: 2000,
-      icon: isBookmarked ? "📋" : "🔖",
-      style: {
-        borderRadius: "10px",
-        background: "#22c55e",
-        color: "#fff",
-      },
-    })
+  const handleBookmark = async () => {
+    await toggleWatchlist(movie)
   }
 
   const handleShare = () => {
@@ -122,11 +109,12 @@ export default function MovieScreen({ movie, onBack }) {
           </button>
           <button
             onClick={handleBookmark}
+            disabled={isWatchlistLoading}
             className={`p-2 bg-black bg-opacity-70 rounded-lg hover:bg-opacity-90 transition-all ${
-              isBookmarked ? "text-yellow-500" : ""
-            }`}
+              isInWatchlist ? "text-yellow-500" : ""
+            } ${isWatchlistLoading ? "opacity-50 cursor-not-allowed" : ""}`}
           >
-            <Bookmark className={`h-4 w-4 ${isBookmarked ? "fill-current" : ""}`} />
+            <Bookmark className={`h-4 w-4 ${isInWatchlist ? "fill-current" : ""}`} />
           </button>
         </div>
       </div>
@@ -162,6 +150,15 @@ export default function MovieScreen({ movie, onBack }) {
                 <span className="text-gray-400 ml-1">({movie.vote_count} votes)</span>
               </div>
 
+              <div className="flex flex-col items-start gap-1">
+                <span className="text-sm text-gray-400">Your Rating</span>
+                <RatingStars
+                  rating={userRating}
+                  onRate={setRating}
+                  isLoading={isRatingLoading}
+                />
+              </div>
+
               <div className="flex items-center">
                 <Calendar className="h-5 w-5 text-gray-400 mr-2" />
                 <span>{new Date(movie.release_date).toLocaleDateString()}</span>
@@ -179,26 +176,36 @@ export default function MovieScreen({ movie, onBack }) {
 
               <button
                 onClick={handleFavorite}
+                disabled={isFavoriteLoading}
                 className={`flex items-center px-6 py-3 border-2 rounded-lg font-medium transition-colors ${
                   isFavorite
                     ? "border-red-500 text-red-500 bg-red-500/10"
                     : "border-gray-600 text-gray-300 hover:border-red-500 hover:text-red-500"
-                }`}
+                } ${isFavoriteLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
                 <Heart className={`mr-2 h-5 w-5 ${isFavorite ? "fill-current" : ""}`} />
-                {isFavorite ? "Favorited" : "Add to Favorites"}
+                {isFavoriteLoading 
+                  ? "Loading..." 
+                  : isFavorite 
+                    ? "Favorited" 
+                    : "Add to Favorites"}
               </button>
 
               <button
                 onClick={handleBookmark}
+                disabled={isWatchlistLoading}
                 className={`flex items-center px-6 py-3 border-2 rounded-lg font-medium transition-colors ${
-                  isBookmarked
+                  isInWatchlist
                     ? "border-yellow-500 text-yellow-500 bg-yellow-500/10"
                     : "border-gray-600 text-gray-300 hover:border-yellow-500 hover:text-yellow-500"
-                }`}
+                } ${isWatchlistLoading ? "opacity-50 cursor-not-allowed" : ""}`}
               >
-                <Bookmark className={`mr-2 h-5 w-5 ${isBookmarked ? "fill-current" : ""}`} />
-                {isBookmarked ? "In Watchlist" : "Add to Watchlist"}
+                <Bookmark className={`mr-2 h-5 w-5 ${isInWatchlist ? "fill-current" : ""}`} />
+                {isWatchlistLoading 
+                  ? "Loading..." 
+                  : isInWatchlist 
+                    ? "In Watchlist" 
+                    : "Add to Watchlist"}
               </button>
             </div>
 
