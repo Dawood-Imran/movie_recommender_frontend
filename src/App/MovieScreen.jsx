@@ -93,12 +93,7 @@ export default function MovieScreen({ movie, onBack }) {
 
         {/* Action Buttons */}
         <div className="absolute top-4 right-4 flex space-x-2">
-          <button
-            onClick={handleShare}
-            className="p-2 bg-black bg-opacity-70 rounded-lg hover:bg-opacity-90 transition-all"
-          >
-            <Share2 className="h-4 w-4" />
-          </button>
+       
           <button
             onClick={handleFavorite}
             className={`p-2 bg-black bg-opacity-70 rounded-lg hover:bg-opacity-90 transition-all ${
